@@ -3,11 +3,21 @@
     "name": "spotify_led_visualizer",
     "description": "A Raspberry-Pi-based webapp to visualize a Spotify user's currently playing track on a connected ws2812b LED strip.",
     "version": "0.0.1",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/lukefredrickson/spotify-led-visualizer"
+    },
     "dependencies": {
         "cookie-parser": "1.4.4",
         "cors": "2.8.5",
         "express": "4.16.4",
         "query-string": "6.4.2",
-        "request": "2.88.0"
+        "request": "2.88.0",
+        "socket.io": "2.2.0",
+        "socket.io-client": "2.2.0"
+    },
+    "devDependencies": {
+        "eslint": "^5.15.3",
+        "eslint-plugin-react": "^7.12.4"
     }
 }
