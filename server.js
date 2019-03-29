@@ -1,10 +1,17 @@
-/* Load the HTTP library */
-var http = require("http");
+var express = require("express"); // Express web server framework
+var request = require("request"); // "Request" library
+var cors = require("cors");
+var querystring = require("querystring");
+var cookieParser = require("cookie-parser");
 
-/* Create an HTTP server to handle responses */
+var client_id = "35aff29158f344858037d41be2493582"; // Your client id
+var client_secret = "772b8d700e10495590f046da6c975e78"; // Your secret
+var redirect_uri = "http://localhost:8888/callback"; // Your redirect uri
 
-http.createServer(function(request, response) {
-    response.writeHead(200, { "Content-Type": "text/plain" });
-    response.write("Hello World");
-    response.end();
-}).listen(8888);
+var stateKey = "spotify_auth_state";
+
+var app = express();
+
+app.use(express.static(__dirname + "/public"))
+    .use(cors())
+    .use(cookieParser());
