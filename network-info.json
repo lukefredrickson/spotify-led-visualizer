@@ -1,0 +1,5 @@
+{
+    "baseUrl": "http://localhost",
+    "frontEndPort": 5000,
+    "backEndPort": 3000
+}
