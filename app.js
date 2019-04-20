@@ -27,7 +27,39 @@ var redirect_uri = baseUrl + ":" + appPort.toString() + "/callback";
 //key for state ID cookie
 var stateKey = "spotify_auth_state";
 
-//ROUTES
+/* ======================================================
+        WebSocket communication between front-end and back-end server.
+    ====================================================== */
+//connect to the back-end server via websockets
+var socket = socketio.connect(baseUrl + ":" + backEndPort.toString() + "/", {
+    reconnection: true
+});
+socket.on("connect", () => {
+    console.log("connected to back-end server");
+});
+
+/* ==========
+        ROUTES
+    ========== */
+//main visualization page
+app.get("/visualizer", function(req, res) {
+    res.redirect(
+        "/#" +
+            querystring.stringify({
+                success: "visualizer"
+            })
+    );
+});
+
+app.get("/in-use", function(req, res) {
+    res.redirect(
+        "/#" +
+            querystring.stringify({
+                error: "in_use"
+            })
+    );
+});
+
 //login page (redirects to spotify auth page)
 app.get("/login", function(req, res) {
     //initialize random state ID and store in cookie
@@ -104,26 +136,17 @@ app.get("/callback", function(req, res) {
                 //grab access token and refresh token from API response
                 var access_token = body.access_token,
                     refresh_token = body.refresh_token;
-                //redirect to main interface page
-                res.redirect("/visualizer");
 
-                /* ================================================
-                    WebSocket communication between front-end and back-end server.
-                    ================================================ */
+                //ONCE ACCESS TOKEN IS PASSED TO BACK-END,
+                //VISUALIZATION MAY BEGIN
 
-                //connect to the back-end server via websockets
-                var socket = socketio.connect(
-                    baseUrl + ":" + backEndPort.toString() + "/",
-                    {
-                        reconnection: true
-                    }
-                );
-                socket.on("connect", () => {
-                    console.log("connected to back-end server");
-                    socket.emit("accessToken", access_token);
-                });
-
+                //pass access token to back-end serverf
+                socket.emit("accessToken", access_token);
+                console.log("access token passed to back-end");
+                console.log("access_token: " + access_token);
+                //get new access token upon request from back-end server
                 socket.on("refreshAccessToken", () => {
+                    console.log("token refresh requested");
                     var authOptions = {
                         url: "https://accounts.spotify.com/api/token",
                         headers: {
@@ -139,14 +162,19 @@ app.get("/callback", function(req, res) {
                         },
                         json: true
                     };
-
                     request.post(authOptions, function(error, response, body) {
                         if (!error && response.statusCode === 200) {
                             var new_access_token = body.access_token;
+                            //pass new access token to back-end server
                             socket.emit("accessToken", new_access_token);
+                            console.log("new access token passed to back-end");
+                            console.log("access_token: " + new_access_token);
                         }
                     });
                 });
+
+                //redirect to main interface page
+                res.redirect("/visualizer");
             }
 
             //if authorization code is rejected, redirect with invalid token error
