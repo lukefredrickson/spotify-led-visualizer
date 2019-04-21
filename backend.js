@@ -8,8 +8,33 @@ console.log("Listening on " + appPort.toString());
 
 //boolean to check whether visualizer is currently being used
 var inUse = false;
-//id of socket which holds connection
-var socketClientId = null;
+
+var ws281x = require("rpi-ws281x-native");
+var NUM_LEDS = 60;
+ws281x.init(NUM_LEDS);
+
+var pixelData = new Uint32Array(NUM_LEDS);
+var colors = [
+    16711680,
+    16744192,
+    16776960,
+    8388352,
+    65280,
+    65407,
+    65535,
+    32767,
+    255,
+    8323327,
+    16711935,
+    16711807
+];
+
+process.on("SIGINT", function() {
+    ws281x.reset();
+    process.nextTick(function() {
+        process.exit(0);
+    });
+});
 
 io.on("connection", socket => {
     if (inUse) {
@@ -112,8 +137,11 @@ function fetchTrackData(state, { track, progress }) {
                     state.visualizer.hasAnalysis = true;
                     normalizeIntervals(state, { track, analysis });
                 }
-                console.log(`has-analysis: ${state.visualizer.hasAnalysis}`);
-                setTrackProgress(state, progress + (Date.now() - timestamp));
+                //console.log(`has-analysis: ${state.visualizer.hasAnalysis}`);
+                setTrackProgress(
+                    state,
+                    progress + (Date.now() - timestamp) + 5
+                );
                 setCurrentlyPlaying(state, {
                     track,
                     analysis,
@@ -126,7 +154,7 @@ function fetchTrackData(state, { track, progress }) {
 }
 
 function processResponse(state, { track, playing, progress }) {
-    //console.log("\nPROCESSING");
+    console.log("\nPROCESSING");
 
     var songsInSync =
         JSON.stringify(state.visualizer.currentlyPlaying) ===
@@ -142,7 +170,7 @@ function processResponse(state, { track, playing, progress }) {
     //console.log("is playing: " + playing);
     //console.log("client progress: " + state.visualizer.trackProgress);
     //console.log("server progress: " + JSON.stringify(progress));
-    //console.log(`Sync error: ${Math.round(progressStats.error)}ms`);
+    console.log(`Sync error: ${Math.round(progressStats.error)}ms`);
 
     if (track === null || track === undefined) {
         return ping(state);
@@ -187,7 +215,7 @@ function refreshAccessToken(state) {
 }
 
 function setCurrentlyPlaying(state, { track, analysis, progress }) {
-    console.log("setting currently playing");
+    //console.log("setting currently playing");
 
     stopVisualizer(state);
 
@@ -219,6 +247,7 @@ function startVisualizer(state) {
     state.visualizer.initialStart = Date.now();
     state.visualizer.initialized = true;
     state.visualizer.active = true;
+
     syncBeats(state);
     ping(state);
 }
@@ -230,6 +259,11 @@ function stopVisualizer(state) {
     if (state.visualizer.beatLoopRunning) {
         state.visualizer.terminateBeatLoop = true;
     }
+
+    for (var i = 0; i < NUM_LEDS; i++) {
+        pixelData[i] = 0;
+    }
+    ws281x.render(pixelData);
 }
 
 function normalizeIntervals(state, { track, analysis }) {
@@ -256,8 +290,8 @@ function normalizeIntervals(state, { track, analysis }) {
 
 function syncBeats(state) {
     if (state.visualizer.hasAnalysis) {
-        console.log(`\nterminate: ${state.visualizer.terminateBeatLoop}`);
-        console.log(`running: ${state.visualizer.beatLoopRunning}\n`);
+        //console.log(`\nterminate: ${state.visualizer.terminateBeatLoop}`);
+        //console.log(`running: ${state.visualizer.beatLoopRunning}\n`);
 
         //if there is a call to terminate the beat loop and the beat loop is stopped, flag the loop as terminated
         if (
@@ -345,9 +379,14 @@ function fireBeat(state) {
     if (state.visualizer.terminateBeatLoop) {
         state.visualizer.beatLoopRunning = false;
     } else {
-        console.log(
+        /*console.log(
             "\nBEAT - " + Math.round(state.visualizer.activeBeat.start) + "ms\n"
-        );
+        );*/
+        var randColor = Math.floor(Math.random() * Math.floor(colors.length));
+        for (var i = 0; i < NUM_LEDS; i++) {
+            pixelData[i] = colors[randColor];
+        }
+        ws281x.render(pixelData);
         incrementBeat(state);
     }
 }
