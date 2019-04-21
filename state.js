@@ -1,5 +1,8 @@
 module.exports = {
     state: {
+        running: false,
+        terminate: false,
+
         io: {
             socket: null
         },
@@ -19,23 +22,29 @@ module.exports = {
         },
 
         visualizer: {
-            /** Echo Nest interval types, for iteration brevity. */
-            intervalTypes: ["tatums", "segments", "beats", "bars", "sections"],
-
-            /** References to currently active intervals, per track progress. */
-            activeIntervals: {
-                tatums: {},
-                segments: {},
-                beats: {},
-                bars: {},
-                sections: {}
-            },
-
             activeBeat: {},
             activeBeatIndex: 0,
             beatLoopRunning: false,
             terminateBeatLoop: false,
-            beatSyncDelay: 100,
+            beatSyncWait: 100,
+
+            //colors to cycle through
+            colors: [
+                16711680,
+                16744192,
+                16776960,
+                8388352,
+                65280,
+                65407,
+                65535,
+                32767,
+                255,
+                8323327,
+                16711935,
+                16711807
+            ],
+            //index of the last color, to avoid duplicates
+            lastColor: -1,
 
             /** Current track, track analysis, and track features. */
             currentlyPlaying: {},
@@ -43,13 +52,10 @@ module.exports = {
             hasAnalysis: false,
 
             /** Timestamps & progress. */
-            initialTrackProgress: 0,
-            initialStart: 0,
             trackProgress: 0,
 
             /** Playing state. */
-            active: false,
-            initialized: false
+            active: false
         }
     }
 };
