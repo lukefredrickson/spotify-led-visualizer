@@ -217,7 +217,7 @@ function processResponse(state, { track, playing, progress }) {
         playing &&
         state.visualizer.active &&
         songsInSync &&
-        Math.abs(progressStats.error) > 500
+        Math.abs(progressStats.error) > state.visualizer.syncOffsetThreshold
     ) {
         var initialTimestamp = Date.now();
         stopBeatLoop(state);
@@ -360,50 +360,28 @@ function syncBeats(state) {
                 break;
             }
         }
-
-        // calculate the time until the next beat
-        var timeUntilNextBeat = calculateTimeUntilNextBeat(state);
         // stage the beat
-        stageBeat(state, timeUntilNextBeat);
+        stageBeat(state);
     }
 }
 
 function calculateTimeUntilNextBeat(state) {
     var activeBeatStart = state.visualizer.activeBeat.start;
     var activeBeatDuration = state.visualizer.activeBeat.duration;
+    var trackProgress = state.visualizer.trackProgress;
     var timeUntilNextBeat =
-        activeBeatDuration - (state.visualizer.trackProgress - activeBeatStart);
+        activeBeatDuration - (trackProgress - activeBeatStart);
     return timeUntilNextBeat;
-}
-
-/**
- * sets the new active beat to the next beat in the array (if it exists)
- */
-function incrementBeat(state) {
-    var beats = state.visualizer.trackAnalysis["beats"];
-    var lastBeatIndex = state.visualizer.activeBeatIndex;
-    // if the last beat index is the last beat of the song, stop beat loop
-    if (beats.length - 1 !== lastBeatIndex) {
-        // calculate the time until the next beat
-        var timeUntilNextBeat = calculateTimeUntilNextBeat(state);
-        // stage the beat
-        stageBeat(state, timeUntilNextBeat);
-
-        // update the active beat to be the next beat
-        var nextBeat = beats[lastBeatIndex + 1];
-        state.visualizer.activeBeat = nextBeat;
-        state.visualizer.activeBeatIndex = lastBeatIndex + 1;
-    }
 }
 
 /**
  * stage a beat to fire after a delay
  */
-function stageBeat(state, timeUntilNextBeat) {
+function stageBeat(state) {
     //set the timeout id to a variable in state for convenient loop cancellation.
     state.visualizer.beatLoop = setTimeout(
         () => fireBeat(state),
-        timeUntilNextBeat
+        calculateTimeUntilNextBeat(state)
     );
 }
 
@@ -445,4 +423,22 @@ function fireBeat(state) {
     // continue the beat loop by incrementing to the next beat
     incrementBeat(state);
     /*}*/
+}
+
+/**
+ * sets the new active beat to the next beat in the array (if it exists)
+ */
+function incrementBeat(state) {
+    var beats = state.visualizer.trackAnalysis["beats"];
+    var lastBeatIndex = state.visualizer.activeBeatIndex;
+    // if the last beat index is the last beat of the song, stop beat loop
+    if (beats.length - 1 !== lastBeatIndex) {
+        // stage the beat
+        stageBeat(state);
+
+        // update the active beat to be the next beat
+        var nextBeat = beats[lastBeatIndex + 1];
+        state.visualizer.activeBeat = nextBeat;
+        state.visualizer.activeBeatIndex = lastBeatIndex + 1;
+    }
 }

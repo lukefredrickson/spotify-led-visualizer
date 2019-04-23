@@ -21,6 +21,8 @@ module.exports = {
         },
 
         visualizer: {
+            syncOffsetThreshold: 100,
+
             beatLoop: undefined,
             activeBeat: {},
             activeBeatIndex: 0,
@@ -50,7 +52,7 @@ module.exports = {
 
             /** Timestamps & progress. */
             trackProgressLoop: undefined,
-            trackProgressTickRate: 10,
+            trackProgressTickRate: 5,
             initialTimestamp: 0,
             initialTrackProgress: 0,
             trackProgress: 0,
