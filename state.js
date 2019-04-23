@@ -1,7 +1,6 @@
 module.exports = {
     state: {
-        running: false,
-        terminate: false,
+        pingLoop: undefined,
 
         io: {
             socket: null
@@ -22,11 +21,9 @@ module.exports = {
         },
 
         visualizer: {
+            beatLoop: undefined,
             activeBeat: {},
             activeBeatIndex: 0,
-            beatLoopRunning: false,
-            terminateBeatLoop: false,
-            beatSyncWait: 100,
 
             //colors to cycle through
             colors: [
@@ -52,6 +49,10 @@ module.exports = {
             hasAnalysis: false,
 
             /** Timestamps & progress. */
+            trackProgressLoop: undefined,
+            trackProgressTickRate: 10,
+            initialTimestamp: 0,
+            initialTrackProgress: 0,
             trackProgress: 0,
 
             /** Playing state. */

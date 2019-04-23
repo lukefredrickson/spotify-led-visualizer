@@ -33,23 +33,12 @@ io.on("connection", socket => {
     // when the access token is passed from the front-end server, begin visualization functions
     socket.on("accessToken", access_token => {
         //terminate any already running visualizer
-        if (state.running) {
-            stopVisualizer(state);
-            state.terminate = true;
-            //wait for ping loop to die before re-initializing with new token
-            setTimeout(
-                () => initialize(state, access_token),
-                2 * state.api.pingDelay
-            );
-        } else {
-            initialize(state, access_token);
-        }
+        stopPingLoop(state);
+        initialize(state, access_token);
     });
 });
 
 function initialize(state, access_token) {
-    state.running = true;
-    state.terminate = false;
     // update state with access token
     state.tokens.accessToken = access_token;
     state.api.headers = { Authorization: "Bearer " + access_token };
@@ -69,9 +58,16 @@ function refreshAccessToken(state) {
  * ping the spotify API for the currently playing song after a delay specified in state
  */
 function ping(state) {
-    if (!state.terminate) {
-        setTimeout(() => fetchCurrentlyPlaying(state), state.api.pingDelay);
-    } else {
+    state.pingLoop = setTimeout(
+        () => fetchCurrentlyPlaying(state),
+        state.api.pingDelay
+    );
+}
+
+function stopPingLoop(state) {
+    if (state.pingLoop !== undefined) {
+        clearTimeout(state.pingLoop);
+        stopVisualizer(state);
         console.log("\n\t==========\n\tTERMINATED\n\t==========\n");
     }
 }
@@ -107,92 +103,16 @@ function fetchCurrentlyPlaying(state) {
             }
             // no error, proceed
             else {
-                // increment our approximation of the track progress by the API call delay
-                if (state.visualizer.active) {
-                    console.log(`\nrequest-delay: ${Date.now() - timestamp}`);
-                    incrementTrackProgress(state, Date.now() - timestamp);
-                }
                 // process the response
                 processResponse(state, {
                     track: body.item,
                     playing: body.is_playing,
-                    progress: body.progress_ms
+                    // account for time to call api in progress
+                    progress: body.progress_ms + (Date.now() - timestamp)
                 });
             }
         }
     );
-}
-
-/**
- * figure out what to do, according to state and track data
- */
-function processResponse(state, { track, playing, progress }) {
-    // increment our approximation of the track progress by the ping rate
-    if (state.visualizer.active) {
-        incrementTrackProgress(state, state.api.pingDelay);
-    }
-
-    // check that the song we have is the currently playing song
-    var songsInSync =
-        JSON.stringify(state.visualizer.currentlyPlaying) ===
-        JSON.stringify(track);
-
-    // approximate progress vs api progress, and error between
-    var progressStats = {
-        client: state.visualizer.trackProgress,
-        server: progress,
-        error: state.visualizer.trackProgress - progress
-    };
-
-    // log the error
-    console.log(`client progress: ${progressStats.client}ms`);
-    console.log(`server progress: ${progressStats.server}ms`);
-    console.log(`Sync error: ${Math.round(progressStats.error)}ms\n`);
-
-    // if nothing is playing, ping state
-    if (track === null || track === undefined) {
-        return ping(state);
-    }
-
-    // if something is playing, but visualizer isn't on
-    if (playing && !state.visualizer.active) {
-        // start the visualizer if the songs are synced
-        if (songsInSync) {
-            startVisualizer(state);
-            return;
-        }
-        // otherwise, get the data for the new track
-        return fetchTrackData(state, { track, progress });
-    }
-
-    // if nothing is playing but the visualizer is active
-    if (!playing && state.visualizer.active) {
-        stopVisualizer(state);
-    }
-
-    // if the wrong song is playing
-    if (playing && state.visualizer.active && !songsInSync) {
-        // stop the visualizer
-        stopVisualizer(state);
-        // get the data for the new track
-        return fetchTrackData(state, { track, progress });
-    }
-
-    // if the approximate track progress and the api track progress fall out of sync by more than 250ms
-    // resync the progress and the beat loop
-    if (
-        playing &&
-        state.visualizer.active &&
-        songsInSync &&
-        Math.abs(progressStats.error) > 150
-    ) {
-        setTrackProgress(state, progress);
-        state.visualizer.terminateBeatLoop = true;
-        syncBeats(state);
-    }
-
-    // keep the ping loop going
-    ping(state);
 }
 
 /**
@@ -230,8 +150,9 @@ function fetchTrackData(state, { track, progress }) {
                     // adjust beat data for ease of use
                     normalizeIntervals(state, { track, analysis });
                 }
-                // set the new approximate track progress
-                setTrackProgress(state, progress + (Date.now() - timestamp));
+                // account for time to call api in initial timestamp
+                var initialTimestamp = Date.now() - (Date.now() - timestamp);
+                syncTrackProgress(state, progress, initialTimestamp);
                 // set the new currently playing song
                 setCurrentlyPlaying(state, {
                     track,
@@ -243,11 +164,75 @@ function fetchTrackData(state, { track, progress }) {
 }
 
 /**
+ * figure out what to do, according to state and track data
+ */
+function processResponse(state, { track, playing, progress }) {
+    // check that the song we have is the currently playing song
+    var songsInSync =
+        JSON.stringify(state.visualizer.currentlyPlaying) ===
+        JSON.stringify(track);
+
+    // approximate progress vs api progress, and error between
+    var progressStats = {
+        client: state.visualizer.trackProgress,
+        server: progress,
+        error: state.visualizer.trackProgress - progress
+    };
+
+    // log the error between our approximate progress and the server progress
+    console.log(`\nclient progress: ${progressStats.client}ms`);
+    console.log(`server progress: ${progressStats.server}ms`);
+    console.log(`Sync error: ${Math.round(progressStats.error)}ms\n`);
+
+    // if nothing is playing, ping state
+    if (track === null || track === undefined) {
+        return ping(state);
+    }
+
+    // if something is playing, but visualizer isn't on
+    if (playing && !state.visualizer.active) {
+        // start the visualizer if the songs are synced
+        if (songsInSync) {
+            return startVisualizer(state);
+        }
+        // otherwise, get the data for the new track
+        return fetchTrackData(state, { track, progress });
+    }
+
+    // if nothing is playing but the visualizer is active
+    if (!playing && state.visualizer.active) {
+        stopVisualizer(state);
+    }
+
+    // if the wrong song is playing
+    if (playing && state.visualizer.active && !songsInSync) {
+        // get the data for the new track
+        stopVisualizer(state);
+        return fetchTrackData(state, { track, progress });
+    }
+
+    // if the approximate track progress and the api track progress fall out of sync by more than 250ms
+    // resync the progress and the beat loop
+    if (
+        playing &&
+        state.visualizer.active &&
+        songsInSync &&
+        Math.abs(progressStats.error) > 500
+    ) {
+        var initialTimestamp = Date.now();
+        stopBeatLoop(state);
+        syncTrackProgress(state, progress, initialTimestamp);
+        syncBeats(state);
+    }
+
+    // keep the ping loop going
+    ping(state);
+}
+
+/**
  * Sets the currently playing song and track analysis in state
  */
 function setCurrentlyPlaying(state, { track, analysis }) {
-    stopVisualizer(state);
-
     state.visualizer.currentlyPlaying = track;
     state.visualizer.trackAnalysis = analysis;
 
@@ -261,24 +246,10 @@ function setCurrentlyPlaying(state, { track, analysis }) {
 }
 
 /**
- * sets the approximation of track progress
- */
-function setTrackProgress(state, progress) {
-    state.visualizer.trackProgress = progress;
-}
-
-/**
- * increments the approximation of track progress
- */
-function incrementTrackProgress(state, progressIncrement) {
-    state.visualizer.trackProgress += progressIncrement;
-}
-
-/**
  * sets visualizer to active, syncs beats, and begins ping loop
  */
 function startVisualizer(state) {
-    console.log("Visualizer started");
+    console.log("\nVisualizer started");
     state.visualizer.active = true;
     syncBeats(state);
     ping(state);
@@ -288,17 +259,56 @@ function startVisualizer(state) {
  * sets visualizer to inactive, terminates beat loop, and turns off led strip
  */
 function stopVisualizer(state) {
-    console.log("Visualizer stopped");
+    console.log("\nVisualizer stopped");
     state.visualizer.active = false;
+    // stop the track progress loop if it's running
+    stopTrackProgressLoop(state);
     // stop the beat loop if it's running
-    if (state.visualizer.beatLoopRunning) {
-        state.visualizer.terminateBeatLoop = true;
-    }
+    stopBeatLoop(state);
     // black out the led strip
     for (var i = 0; i < NUM_LEDS; i++) {
         pixelData[i] = 0;
     }
     ws281x.render(pixelData);
+}
+
+function syncTrackProgress(state, initialProgress, initialTimestamp) {
+    state.visualizer.initialTimestamp = initialTimestamp;
+    // stop the track progress update loop
+    stopTrackProgressLoop(state);
+    // set the new approximate track progress
+    setTrackProgress(state, initialProgress);
+    // begin the track progress update loop
+    startTrackProgressLoop(state);
+}
+
+/**
+ * sets the approximation of track progress
+ */
+function setTrackProgress(state, initialProgress) {
+    state.visualizer.initialTrackProgress = initialProgress;
+}
+
+/**
+ * A setInterval loop which ticks approximate track progress
+ */
+function startTrackProgressLoop(state) {
+    calculateTrackProgress(state);
+    state.visualizer.trackProgressLoop = setInterval(() => {
+        calculateTrackProgress(state);
+    }, state.visualizer.trackProgressTickRate);
+}
+
+function calculateTrackProgress(state) {
+    state.visualizer.trackProgress =
+        state.visualizer.initialTrackProgress +
+        (Date.now() - state.visualizer.initialTimestamp);
+}
+
+function stopTrackProgressLoop(state) {
+    if (state.visualizer.trackProgressLoop !== undefined) {
+        clearTimeout(state.visualizer.trackProgressLoop);
+    }
 }
 
 /**
@@ -330,63 +340,40 @@ function normalizeIntervals(state, { track, analysis }) {
  * Manages the beat fire loop and detection of the active beat.
  */
 function syncBeats(state) {
-    console.log("\n\tsyncBeats()");
     if (state.visualizer.hasAnalysis) {
-        // if there is a call to terminate the beat loop and the beat loop is stopped, flag the loop as terminated
-        if (
-            state.visualizer.terminateBeatLoop &&
-            !state.visualizer.beatLoopRunning
-        ) {
-            state.visualizer.terminateBeatLoop = false;
-            // if the visualizer is currently active, resume the beat loop
-            if (state.visualizer.active === true) {
-                syncBeats(state);
-            }
-            return;
-        }
-        // if there is a currently running beat loop, terminate the loop and wait for it to stop
-        else if (state.visualizer.beatLoopRunning) {
-            state.visualizer.terminateBeatLoop = true;
-            setTimeout(() => syncBeats(state), state.beatSyncWait);
-        }
-        // if there is no running loop and no call to terminate the loop, sync the beats and start the loop
-        else {
-            //console.log("\nSyncing Beats");
+        // reset the active beat
+        state.visualizer.activeBeat = {};
+        state.visualizer.activeBeatIndex = 0;
 
-            state.visualizer.activeBeat = {};
-            state.visualizer.activeBeatIndex = 0;
-            // find and set the currently active beat
-            var trackProgress = state.visualizer.trackProgress;
-            var beats = state.visualizer.trackAnalysis["beats"];
-            for (var i = 0; i < beats.length - 2; i++) {
-                if (
-                    trackProgress > beats[i].start &&
-                    trackProgress < beats[i + 1].start
-                ) {
-                    state.visualizer.activeBeat = beats[i];
-                    state.visualizer.activeBeatIndex = i;
-                    break;
-                }
-            }
-            // if no active beat found, attempt to sync again
-            if (state.visualizer.activeBeat === {}) {
-                setTimeout(() => syncBeats(state), state.beatSyncWait);
-            }
-            // if the beat was found, stage the initial beat
-            else {
-                var activeBeatStart = state.visualizer.activeBeat.start;
-                var activeBeatDuration = state.visualizer.activeBeat.duration;
-                var timeUntilNextBeat =
-                    activeBeatDuration - (trackProgress - activeBeatStart);
-                // don't stage a beat if it has passed already, resync instead
-                if (timeUntilNextBeat <= 0) {
-                    setTimeout(() => syncBeats(state), state.beatSyncWait);
-                }
-                state.visualizer.beatLoopRunning = true;
-                stageBeat(state, timeUntilNextBeat);
+        // grab state vars
+        var trackProgress = state.visualizer.trackProgress;
+        var beats = state.visualizer.trackAnalysis["beats"];
+
+        // find and set the currently active beat
+        for (var i = 0; i < beats.length - 2; i++) {
+            if (
+                trackProgress > beats[i].start &&
+                trackProgress < beats[i + 1].start
+            ) {
+                state.visualizer.activeBeat = beats[i];
+                state.visualizer.activeBeatIndex = i;
+                break;
             }
         }
+
+        // calculate the time until the next beat
+        var timeUntilNextBeat = calculateTimeUntilNextBeat(state);
+        // stage the beat
+        stageBeat(state, timeUntilNextBeat);
     }
+}
+
+function calculateTimeUntilNextBeat(state) {
+    var activeBeatStart = state.visualizer.activeBeat.start;
+    var activeBeatDuration = state.visualizer.activeBeat.duration;
+    var timeUntilNextBeat =
+        activeBeatDuration - (state.visualizer.trackProgress - activeBeatStart);
+    return timeUntilNextBeat;
 }
 
 /**
@@ -396,15 +383,16 @@ function incrementBeat(state) {
     var beats = state.visualizer.trackAnalysis["beats"];
     var lastBeatIndex = state.visualizer.activeBeatIndex;
     // if the last beat index is the last beat of the song, stop beat loop
-    if (beats.length - 1 === lastBeatIndex) {
-        state.visualizer.beatLoopRunning = false;
-    }
-    // otherwise increment the beat by one
-    else {
+    if (beats.length - 1 !== lastBeatIndex) {
+        // calculate the time until the next beat
+        var timeUntilNextBeat = calculateTimeUntilNextBeat(state);
+        // stage the beat
+        stageBeat(state, timeUntilNextBeat);
+
+        // update the active beat to be the next beat
         var nextBeat = beats[lastBeatIndex + 1];
         state.visualizer.activeBeat = nextBeat;
         state.visualizer.activeBeatIndex = lastBeatIndex + 1;
-        stageBeat(state, nextBeat.duration);
     }
 }
 
@@ -412,40 +400,49 @@ function incrementBeat(state) {
  * stage a beat to fire after a delay
  */
 function stageBeat(state, timeUntilNextBeat) {
-    setTimeout(() => fireBeat(state), timeUntilNextBeat);
+    //set the timeout id to a variable in state for convenient loop cancellation.
+    state.visualizer.beatLoop = setTimeout(
+        () => fireBeat(state),
+        timeUntilNextBeat
+    );
+}
+
+function stopBeatLoop(state) {
+    if (state.visualizer.beatLoop !== undefined) {
+        clearTimeout(state.visualizer.beatLoop);
+    }
 }
 
 /**
  * Fires a beat on the LED strip.
  */
 function fireBeat(state) {
-    // don't increment the beat if there is a call to terminate the loop
-    if (state.visualizer.terminateBeatLoop) {
-        state.visualizer.beatLoopRunning = false;
-    } else {
-        // log the beat to console if you want to
-        console.log(
-            `\nBEAT - ${Math.round(state.visualizer.activeBeat.start)}ms\n`
+    // log the beat to console if you want to
+    /*
+    console.log(
+        `\nBEAT - ${Math.round(state.visualizer.activeBeat.start)}ms\n`
+    );
+    */
+
+    // grab a random color from the options that is different from the previous color
+    var randColor;
+    do {
+        randColor = Math.floor(
+            Math.random() * Math.floor(state.visualizer.colors.length)
         );
+    } while (randColor == state.visualizer.lastColor);
+    //set the new previous color
+    state.visualizer.lastColor = randColor;
 
-        // grab a random color from the options that is different from the previous color
-        var randColor;
-        do {
-            randColor = Math.floor(
-                Math.random() * Math.floor(state.visualizer.colors.length)
-            );
-        } while (randColor == state.visualizer.lastColor);
-        state.visualizer.lastColor = randColor;
-
-        // set every LED on the strip to that color
-        for (var i = 0; i < NUM_LEDS; i++) {
-            pixelData[i] = state.visualizer.colors[randColor];
-        }
-
-        //render the LED strip
-        ws281x.render(pixelData);
-
-        // continue the beat loop by incrementing to the next beat
-        incrementBeat(state);
+    // set every LED on the strip to that color
+    for (var i = 0; i < NUM_LEDS; i++) {
+        pixelData[i] = state.visualizer.colors[randColor];
     }
+
+    //render the LED strip
+    ws281x.render(pixelData);
+
+    // continue the beat loop by incrementing to the next beat
+    incrementBeat(state);
+    /*}*/
 }
