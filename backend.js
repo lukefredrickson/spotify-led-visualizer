@@ -38,6 +38,9 @@ io.on("connection", socket => {
     });
 });
 
+/**
+ *  initializes the visualizer by setting access token and starting ping loop
+ */
 function initialize(state, access_token) {
     // update state with access token
     state.tokens.accessToken = access_token;
@@ -64,6 +67,9 @@ function ping(state) {
     );
 }
 
+/**
+ * stops the ping loop, effectively stopping the visualizer until a new access token is passed
+ */
 function stopPingLoop(state) {
     if (state.pingLoop !== undefined) {
         clearTimeout(state.pingLoop);
@@ -272,6 +278,9 @@ function stopVisualizer(state) {
     ws281x.render(pixelData);
 }
 
+/**
+ * resets any track progress approximation loop currently running and begins a new loop
+ */
 function syncTrackProgress(state, initialProgress, initialTimestamp) {
     state.visualizer.initialTimestamp = initialTimestamp;
     // stop the track progress update loop
@@ -294,17 +303,24 @@ function setTrackProgress(state, initialProgress) {
  */
 function startTrackProgressLoop(state) {
     calculateTrackProgress(state);
+    // calculate and set track progress on a specified tick rate
     state.visualizer.trackProgressLoop = setInterval(() => {
         calculateTrackProgress(state);
     }, state.visualizer.trackProgressTickRate);
 }
 
+/**
+ * calculates current song progress with timestamp now and timestamp when song started playing
+ */
 function calculateTrackProgress(state) {
     state.visualizer.trackProgress =
         state.visualizer.initialTrackProgress +
         (Date.now() - state.visualizer.initialTimestamp);
 }
 
+/**
+ * stops the approximate track progress loop
+ */
 function stopTrackProgressLoop(state) {
     if (state.visualizer.trackProgressLoop !== undefined) {
         clearTimeout(state.visualizer.trackProgressLoop);
@@ -365,6 +381,9 @@ function syncBeats(state) {
     }
 }
 
+/**
+ * calculates the time until the next beat based on current beat duration and track progress
+ */
 function calculateTimeUntilNextBeat(state) {
     var activeBeatStart = state.visualizer.activeBeat.start;
     var activeBeatDuration = state.visualizer.activeBeat.duration;
@@ -385,6 +404,9 @@ function stageBeat(state) {
     );
 }
 
+/**
+ * stops the beat loop
+ */
 function stopBeatLoop(state) {
     if (state.visualizer.beatLoop !== undefined) {
         clearTimeout(state.visualizer.beatLoop);

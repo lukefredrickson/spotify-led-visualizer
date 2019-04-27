@@ -1,4 +1,4 @@
-//impored required libraries
+//import required libraries
 var express = require("express");
 var request = require("request");
 var cors = require("cors");
@@ -43,12 +43,7 @@ socket.on("connect", () => {
     ========== */
 //main visualization page
 app.get("/visualizer", function(req, res) {
-    res.redirect(
-        "/#" +
-            querystring.stringify({
-                success: "visualizer"
-            })
-    );
+    res.redirect("visualizer.html");
 });
 
 app.get("/in-use", function(req, res) {
