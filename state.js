@@ -1,3 +1,6 @@
+//Author: Luke Fredrickson
+//state.js file adapted and modified from https://github.com/zachwinter/kaleidosync
+
 module.exports = {
     state: {
         pingLoop: undefined,

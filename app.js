@@ -1,3 +1,6 @@
+//Author: Luke Fredrickson
+//Authorization flow adapted and modified from https://github.com/spotify/web-api-auth-examples
+
 //import required libraries
 var express = require("express");
 var request = require("request");
@@ -44,15 +47,6 @@ socket.on("connect", () => {
 //main visualization page
 app.get("/visualizer", function(req, res) {
     res.redirect("visualizer.html");
-});
-
-app.get("/in-use", function(req, res) {
-    res.redirect(
-        "/#" +
-            querystring.stringify({
-                error: "in_use"
-            })
-    );
 });
 
 //login page (redirects to spotify auth page)
